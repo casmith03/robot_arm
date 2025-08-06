@@ -23,12 +23,37 @@ class MoveArm(Node):
             self.get_parameter('end_effector_angle').get_parameter_value().double_value
         )
 
+        # Joint limits - configurable via parameters for portability
+        # Default values are from OpenManipulator-X URDF
+        self.declare_parameter('joint_limits.joint1.lower', -math.pi*0.9)
+        self.declare_parameter('joint_limits.joint1.upper', math.pi*0.9)
+        self.declare_parameter('joint_limits.joint2.lower', -math.pi*0.57)
+        self.declare_parameter('joint_limits.joint2.upper', math.pi*0.5)
+        self.declare_parameter('joint_limits.joint3.lower', -math.pi*0.3)
+        self.declare_parameter('joint_limits.joint3.upper', math.pi*0.44)
+        self.declare_parameter('joint_limits.joint4.lower', -math.pi*0.57)
+        self.declare_parameter('joint_limits.joint4.upper', math.pi*0.65)
+
+        # Q - whats the point of using declare_parameter here ??
+
+        # Load joint limits from parameters (read once at startup)
+        self.joint_limits = {}
+        for joint_name in ['joint1', 'joint2', 'joint3', 'joint4']:
+            lower = self.get_parameter(f'joint_limits.{joint_name}.lower').get_parameter_value().double_value
+            upper = self.get_parameter(f'joint_limits.{joint_name}.upper').get_parameter_value().double_value
+            self.joint_limits[joint_name] = (lower, upper)
 
 
+        # i should need this right?
+        self.joint_state_sub = self.create_subscription(JointState, "/joint_states", self.joint_state_callback, 10)
+
+
+        # why do you not use :
+            # /servo_node/delta_joint_cmds
+            #/servo_node/delta_twist_cmds
 
         
         # // ARNAVS CODE - pasted
-
 
     
 

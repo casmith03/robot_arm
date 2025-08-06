@@ -32,6 +32,7 @@ ament_python_install_package(${PROJECT_NAME}_modules)
 install(PROGRAMS
   scripts/minimal_node.py
   scripts/move_arm.py
+  scripts/follow_joint_trajectory_action_client.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -45,6 +45,9 @@ class FollowJointTrajectoryActionClient(Node):
 
         ## arnavs code ----
 
+        self.get_logger().info("Follow Joint Trajectory node initialized")
+
+
 
     def send_goal(self, a, b):
         goal_msg = FollowJointTrajectory.Goal()
@@ -67,7 +70,7 @@ class FollowJointTrajectoryActionClient(Node):
         # =======
         # point = JointTrajectoryPoint() # Arnavs
 
-        #   positions - REQUIRED - list of target positions for all joints listed in trajectory.joint_names
+        #   positions - REQUIRED - list of target positions for all joints listed in trajectory.joint_names. They are joint angles in rad.
         # =======
         # point.positions = [] # placeholder for Arnavs calcs
         #   velocities
@@ -93,10 +96,16 @@ class FollowJointTrajectoryActionClient(Node):
         point1.time_from_start.sec = 0
 
         point2 = JointTrajectoryPoint()  
-        # point2.positions = [, , , ]    # Move here in 2s  - TODO: weave in joint limits?? - ASK ARNAV 
-        point2.time_from_start.sec = 2
+        # point2.positions = [, , , ] # joint angles in rad - TODO: weave in joint limits?? - ASK ARNAV 
+        point2.time_from_start.sec = 2 # Move here in 2s
 
         goal_msg.trajectory.points = [point1, point2] # the journey
+
+
+
+
+
+
 
         # +++++++++++++++
 
@@ -130,44 +139,44 @@ class FollowJointTrajectoryActionClient(Node):
         return [joint1, joint2, joint3, joint4]
 
 
-if __name__ == '__main__':
-    rclpy.init(args=args)
+# if __name__ == '__main__':
+#     rclpy.init(args=args)
 
-    action_client = FollowJointTrajectoryActionClient()
+#     action_client = FollowJointTrajectoryActionClient()
 
-    # TODO: adapt to your action's parameters
-    future = action_client.send_goal(a, b)
+#     # TODO: adapt to your action's parameters
+#     future = action_client.send_goal(a, b)
 
-    rclpy.spin_until_future_complete(action_client, future)
+#     rclpy.spin_until_future_complete(action_client, future)
 
-    rclpy.shutdown()
+#     rclpy.shutdown()
 
 
 
 # OWN main method
-# def main(args=None):
-#     rclpy.init(
-#         args=args,
-#         signal_handler_options=SignalHandlerOptions.NO,
-#     )
-#     action_client = FollowJointTrajectoryActionClient()
+def main(args=None):
+    rclpy.init(
+        args=args,
+        signal_handler_options=SignalHandlerOptions.NO,
+    )
+    action_client = FollowJointTrajectoryActionClient()
 
-#     try:
-#         # TODO: adapt to your action's parameters
-#         # future = action_client.send_goal(a, b) # returns future once action is completed
-#         # rclpy.spin_until_future_complete(action_client, future) # try inseatd of rclpy.spin(action_client) - continuous
-#         rclpy.spin(action_client) 
-#     except KeyboardInterrupt:
-#         print(
-#             f"{action_client.get_name()} received a shutdown request (Ctrl+C)."
-#         )
-#     finally:
-#         action_client.on_shutdown()
-#         while not action_client.shutdown:
-#             continue
-#         action_client.destroy_node()
-#         rclpy.shutdown()
+    try:
+        # TODO: adapt to your action's parameters
+        # future = action_client.send_goal(a, b) # returns future once action is completed
+        # rclpy.spin_until_future_complete(action_client, future) # try inseatd of rclpy.spin(action_client) - continuous
+        rclpy.spin(action_client) 
+    except KeyboardInterrupt:
+        print(
+            f"{action_client.get_name()} received a shutdown request (Ctrl+C)."
+        )
+    finally:
+        action_client.on_shutdown()
+        while not action_client.shutdown:
+            continue
+        action_client.destroy_node()
+        rclpy.shutdown()
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 

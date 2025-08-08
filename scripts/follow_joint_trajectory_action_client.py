@@ -30,24 +30,25 @@ class FollowJointTrajectoryActionClient(Node):
 
         ## arnavs code ------------------
 
-        # #  Joint limits - configurable via parameters for portability
-        # # Default values are from OpenManipulator-X URDF
-        # self.declare_parameter('joint_limits.joint1.lower', -math.pi*0.9)
-        # self.declare_parameter('joint_limits.joint1.upper', math.pi*0.9)
-        # self.declare_parameter('joint_limits.joint2.lower', -math.pi*0.57)
-        # self.declare_parameter('joint_limits.joint2.upper', math.pi*0.5)
-        # self.declare_parameter('joint_limits.joint3.lower', -math.pi*0.3)
-        # self.declare_parameter('joint_limits.joint3.upper', math.pi*0.44)
-        # self.declare_parameter('joint_limits.joint4.lower', -math.pi*0.57)
-        # self.declare_parameter('joint_limits.joint4.upper', math.pi*0.65)
+        #  Joint limits - configurable via parameters for portability
+        # Default values are from OpenManipulator-X URDF
+        # self.declare_parameter('joint_limits.joint1.lower', -math.pi*0.9)   # -162° Base
+        # self.declare_parameter('joint_limits.joint1.upper', math.pi*0.9)    # +162° Base
+        self.declare_parameter('joint_limits.joint1.lower', math.radians(-180))    # -180° Base - NEW
+        self.declare_parameter('joint_limits.joint1.upper', math.radians(180))     # +180° Base - NEW
+        self.declare_parameter('joint_limits.joint2.lower', math.radians(-103))    # -103° Shoulder
+        self.declare_parameter('joint_limits.joint2.upper', math.radians(90))      # +90°  Shoulder
+        self.declare_parameter('joint_limits.joint3.lower', math.radians(-54))     # -54°  Elbow
+        self.declare_parameter('joint_limits.joint3.upper', math.radians(79))      # +79°  Elbow
+        self.declare_parameter('joint_limits.joint4.lower', math.radians(-103))    # -103° Wrist
+        self.declare_parameter('joint_limits.joint4.upper', math.radians(117))     # +117° Wrist
 
-
-        # # Load joint limits from parameters (read once at startup)
-        # self.joint_limits = {}
-        # for joint_name in ['joint1', 'joint2', 'joint3', 'joint4']:
-        #     lower = self.get_parameter(f'joint_limits.{joint_name}.lower').get_parameter_value().double_value
-        #     upper = self.get_parameter(f'joint_limits.{joint_name}.upper').get_parameter_value().double_value
-        #     self.joint_limits[joint_name] = (lower, upper)
+        # Load joint limits from parameters (read once at startup)
+        self.joint_limits = {}
+        for joint_name in ['joint1', 'joint2', 'joint3', 'joint4']:
+            lower = self.get_parameter(f'joint_limits.{joint_name}.lower').get_parameter_value().double_value
+            upper = self.get_parameter(f'joint_limits.{joint_name}.upper').get_parameter_value().double_value
+            self.joint_limits[joint_name] = (lower, upper)
 
         self.arm_joints = ["joint1", "joint2", "joint3", "joint4"]
         self.current_positions = [0.0] * len(self.arm_joints) # for feedback??
@@ -150,7 +151,7 @@ class FollowJointTrajectoryActionClient(Node):
     #     # self.last_goal_time = current_time
 
 
-
+    # Credit: Arnavs, modified
     # update params to 'journey' ?? or should i make the journey multiple goals, ie one goals = one waypoint on the journey??
     """
         # joint trajectory points float64[]
@@ -185,33 +186,41 @@ class FollowJointTrajectoryActionClient(Node):
         # goal_msg.b = b
     """
     def send_goal(self, joint_angles): # TODO: update params for a journey / multiple waypoints? or not ... just one waypoint but more info eg time, & what other params?
+        self.print_format_goal(joint_angles) # print goal 
 
         if not self._action_client.wait_for_server(timeout_sec=1.0):
             self.get_logger().warn("Action server not available!")
             return
 
-        # Cancel previous goal # Arnavs
+        # Cancel previous goal 
         if self.current_goal_handle is not None:
             self.current_goal_handle.cancel_goal_async()
-    
+
+        self.goal_succeeded = False # reset
+
+        # Clamp to joint limits
+        for i, joint_name in enumerate(['joint1', 'joint2', 'joint3', 'joint4']):
+            joint_angles[i] = self.clamp_to_joint_limits(joint_name, joint_angles[i])
 
         goal_msg = FollowJointTrajectory.Goal()
 
         # joint names string[]
         goal_msg.trajectory.joint_names = self.arm_joints # add joints to goal_msg
 
+        # Define waypoints
         start = JointTrajectoryPoint()
         start.positions = [0.0, 0.0, 0.0, 0.0] # Start (4 joints)
         start.time_from_start.sec = 2 # 1s to get to start
 
         waypoint_1 = JointTrajectoryPoint()  
-        # point2.positions = [, , , ] # joint angles in rad - TODO: weave in joint limits?? - ASK ARNAV 
+        # point2.positions = [, , , ] # joint angles in rad
         waypoint_1.positions = joint_angles
-        waypoint_1.time_from_start.sec = start.time_from_start.sec + 2 # Move here in 2s
+        waypoint_1.time_from_start.sec = 3 # Move here in 3s
+        # waypoint_1.time_from_start.sec = start.time_from_start.sec + 2 # Time relative to prev. waypoint 
 
-        end = JointTrajectoryPoint()
-        end.positions = [0.0, 0.0, 0.0, 0.0] # Start (4 joints)
-        end.time_from_start.sec = waypoint_1.time_from_start.sec + 2
+        # end = JointTrajectoryPoint()
+        # end.positions = [0.0, 0.0, 0.0, 0.0] # return to start.positions
+        # end.time_from_start.sec = waypoint_1.time_from_start.sec + 2
 
         goal_msg.trajectory.points = [waypoint_1] # the journey - moves from start back to start
 
@@ -286,6 +295,36 @@ class FollowJointTrajectoryActionClient(Node):
             n += 1
         self.get_logger().info(f"------------------------")
 
+    # Credit: Arnavs
+    # checks if goal joint angles are within joint limits
+    # prints warning and returns joint limit (upper or lower) if not
+    def clamp_to_joint_limits(self, joint_name, target_rad):
+        """Clamp target angle to joint limits and warn if clamping occurs."""
+        lower, upper = self.joint_limits[joint_name]
+        if target_rad < lower:
+            self.get_logger().warn(
+                f"{joint_name}: target {math.degrees(target_rad):.1f}° below limit "
+                f"{math.degrees(lower):.1f}°, clamping"
+            )
+            return lower
+        elif target_rad > upper:
+            self.get_logger().warn(
+                f"{joint_name}: target {math.degrees(target_rad):.1f}° above limit "
+                f"{math.degrees(upper):.1f}°, clamping"
+            )
+            return upper
+        return target_rad
+    
+        # ----- SHAPE SEQUENCES -------
+
+    def draw_square(self, length):
+        self.get_logger().info(f"Drawing Square...")
+        return
+    
+    def draw_circle(self, radius):
+        self.get_logger().info(f"Drawing Circle...")
+        return
+
 
 # OWN main method
 def main(args=None):
@@ -318,16 +357,56 @@ def main(args=None):
         joint_angles = [math.radians(-20),math.radians(-20),math.radians(-20),math.radians(-20)] # (-) moves up and anticlockwise 
         # joint_angles = [math.radians(20),math.radians(20),math.radians(20),math.radians(20)] # (+) moves down and clockwise 
 
-        # sending multiple goals ...
-        # make square
+        # test out of bounds joint angles 
+        joint_angles = [math.radians(163),0.0,0.0,0.0] # base - passed, also passed at +-180
+        joint_angles = [0.0,math.radians(-104),0.0,0.0] # j2 - passed
+        joint_angles = [0.0,math.radians(68),0.0,0.0] # j2 - limit - new limit of 75 with camera, 67 with ground (wrist not fully down) - but different around corners??
+        joint_angles = [0.0,math.radians(65),0.0,math.radians(20)] # limit - closest to ground and robot front (wrist straight down)
+        
+
+        joint_angles = [0.0,0.0,math.radians(-55),0.0] # j3 - passed
+        joint_angles = [0.0,0.0,math.radians(55),math.radians(30)] # j3 - front limit - itsself 1st deck top, wrist fully down
+        joint_angles = [math.radians(90),0.0,math.radians(50),math.radians(35)] # j3 - side limits - itsself 1st deck top, wrist fully down, 1/4 rotating base
+        joint_angles = [math.radians(180),0.0,math.radians(45),math.radians(40)] # j3 - back limit - itsself 1st deck top, wrist fully down, static base
+        # better - avoid all base conflicts - use shoulder
+        joint_angles = [math.radians(180),math.radians(10),math.radians(35),math.radians(40)] # j3 - full curcle limit - itsself 1st deck top, wrist fully down, fully 360 rotating base (+-180)
+        #TODO: more ...
+
+        joint_angles = [0.0,0.0,0.0,math.radians(-104)] # j4 - passed
+        joint_angles = [0.0,0.0,0.0,math.radians(118)] # j4 - passed
+
+        # future = action_client.send_goal(joint_angles)
+
+        # limiting states:
+        # TODO: calculate the position of the gripper, due to the accumulated angles. See if it hits a limit
+        # how to get around this - maybe have pre-defined instructions? and states. 
+
+
+        # TODO: sending multiple goals ...
         start = [0.0,0.0,0.0,0.0] # [rad] 
         waypoint_1 = [-math.radians(30),0.0,0.0,0.0] # [rad] 
+        future = action_client.send_goal(start)
+    
+        # while action_client.goal_succeeded: # only continues if goal has succeded, then stops once goal is in - fails 
+        #     continue
+
+        # time.sleep(4) # works! - or could handle this internally within send_goal if i sent a 'journey' -  or pause execution until finished goal?
+
+        # while(not action_client.goal_succeeded):
+        #     time.sleep(1) # fail- sleeps forvever 
+        
+        # if action_client.goal_succeeded: # fails - needs to wait / sleep while goal not succeded
+        #     future = action_client.send_goal(waypoint_1) # fails if sends simultaneously - needs to spin until ... or wait / sleep OR send multiple parameters in a 'jourey'
+
+        # TODO: try calling next goal once future returns?? - try add done callback - eithere here in main or internally after get_result_callback ...??
+
+        future = action_client.send_goal(waypoint_1)
+
+        # Draw shapes - set sequences
+        action_client.draw_square(2)
+        action_client.draw_circle(2)
 
 
-
-
-        action_client.print_format_goal(joint_angles) # print goal 
-        future = action_client.send_goal(joint_angles)
         # rclpy.spin_until_future_complete(action_client, future) # spins until goal reponds (future), then shuts down. Error - doesnt allow any feedback as shuts node right away. try inseatd of rclpy.spin(action_client) - continuous
         rclpy.spin(action_client) # fixes feedback bug - doesn't stop node prematurely like above 'spin_until_future_complete'
 
